@@ -1,9 +1,6 @@
 package com.survival.survivalgame.controllers;
 
-import com.survival.survivalgame.core.CollisionManager;
-import com.survival.survivalgame.core.GameRenderer;
-import com.survival.survivalgame.core.GameUpdater;
-import com.survival.survivalgame.core.InputHandler;
+import com.survival.survivalgame.core.*;
 import com.survival.survivalgame.models.AmmoBox;
 import com.survival.survivalgame.models.Area;
 import com.survival.survivalgame.models.Enemy;
@@ -69,11 +66,12 @@ public class GameController implements Initializable {
         this.totalEnemies = spawnObjectsRandomly();
 
         // Initialize core game systems
+        SoundManager soundManager  = new SoundManager();
         this.gameState = GameState.JOGANDO;
         this.inputHandler = new InputHandler();
-        this.collisionManager = new CollisionManager(player, world, bullets, this);
-        this.gameUpdater = new GameUpdater(this, player, world, inputHandler, collisionManager, bullets, gameCanvas);
-        this.gameRenderer = new GameRenderer(this, gameUpdater, gc, world, player, gameCanvas, bullets);
+        this.collisionManager = new CollisionManager(player, world, bullets, this, soundManager);
+        this.gameUpdater = new GameUpdater(this, player, world, inputHandler, collisionManager, bullets, soundManager);
+        this.gameRenderer = new GameRenderer(this, gameUpdater, gc, world, player, gameCanvas, bullets, inputHandler);
 
         // Set up input handler after the canvas has been added to a Scene
         gameCanvas.sceneProperty().addListener((obs, oldScene, newScene) -> {

@@ -2,6 +2,7 @@ module com.survival.survivalgame {
     requires javafx.controls;
     requires javafx.fxml;
     requires java.desktop;
+    requires javafx.media;
 
 
     opens com.survival.survivalgame to javafx.fxml;

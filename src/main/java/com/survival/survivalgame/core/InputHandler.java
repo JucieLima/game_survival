@@ -19,6 +19,36 @@ public class InputHandler {
     private boolean isFiring;
     private double mouseX;
     private double mouseY;
+    private PlayerState currentState;
+    private boolean isMoving;
+
+    private long lastFiringTime = 0;
+    private static final long FIRING_DURATION = 200_000_000; // 200ms
+
+    public InputHandler() {
+        this.currentState = PlayerState.IDLE;
+        this.isMoving = false;
+    }
+
+    /**
+     * Updates the player state based on movement and firing inputs.
+     */
+    public void updateState() {
+        boolean isCurrentlyFiring = isFiring || (System.nanoTime() - lastFiringTime < FIRING_DURATION);
+        if (isMoving && isCurrentlyFiring) {
+            currentState = PlayerState.MOVING_SHOOTING;
+        } else if (isCurrentlyFiring) {
+            currentState = PlayerState.IDLE_SHOOTING;
+        } else if (isMoving) {
+            currentState = PlayerState.MOVING;
+        } else {
+            currentState = PlayerState.IDLE;
+        }
+    }
+
+    public PlayerState getCurrentState() {
+        return currentState;
+    }
 
     /**
      * Sets up event handlers on the game scene to listen for key presses, releases, and mouse clicks.
@@ -29,6 +59,7 @@ public class InputHandler {
         scene.setOnKeyReleased(this::handleKeyRelease);
         scene.setOnMousePressed(this::handleMousePress);
         scene.setOnMouseReleased(this::handleMouseRelease);
+        // Removido handleMouseMove, pois a direção do tiro agora vem de lastDirection
     }
 
     /**
@@ -78,13 +109,12 @@ public class InputHandler {
     }
 
     /**
-     * Handles mouse press events, setting the firing flag to true and storing the mouse coordinates.
+     * Handles mouse press events, setting the firing flag to true.
      * @param event The mouse event.
      */
     private void handleMousePress(MouseEvent event) {
         this.isFiring = true;
-        this.mouseX = event.getX();
-        this.mouseY = event.getY();
+        this.lastFiringTime = System.nanoTime();
     }
 
     /**
@@ -97,6 +127,7 @@ public class InputHandler {
 
     /**
      * Calculates and returns a normalized direction vector based on the currently pressed keys.
+     * Updates isMoving based on whether any movement keys are pressed.
      * @return A Direction object representing the player's intended movement.
      */
     public Direction getDirection() {
@@ -116,8 +147,11 @@ public class InputHandler {
             dx += 1;
         }
 
+        // Atualizar isMoving
+        isMoving = (dx != 0 || dy != 0);
+
         // Normalize the vector to ensure consistent speed in all directions
-        if (dx != 0 || dy != 0) {
+        if (isMoving) {
             double length = Math.sqrt(dx * dx + dy * dy);
             dx /= length;
             dy /= length;
@@ -126,16 +160,8 @@ public class InputHandler {
         return new Direction(dx, dy);
     }
 
-    // Getters for mouse state
+    // Getters for firing state
     public boolean isFiring() {
         return isFiring;
-    }
-
-    public double getMouseX() {
-        return mouseX;
-    }
-
-    public double getMouseY() {
-        return mouseY;
     }
 }

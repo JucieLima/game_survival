@@ -22,12 +22,14 @@ public class CollisionManager {
     private final World world;
     private final List<Bullet> bullets;
     private final GameController gameController;
+    private final SoundManager soundManager; // Adicionado para sons de coleta
 
-    public CollisionManager(Player player, World world, List<Bullet> bullets, GameController gameController) {
+    public CollisionManager(Player player, World world, List<Bullet> bullets, GameController gameController, SoundManager soundManager) {
         this.player = player;
         this.world = world;
         this.bullets = bullets;
         this.gameController = gameController;
+        this.soundManager = soundManager;
     }
 
     /**
@@ -76,6 +78,11 @@ public class CollisionManager {
                 // Assuming a simple circular collision model
                 if (distance < player.getRadius() + 10) { // 10 is a placeholder radius for the item
                     item.applyEffect(player);
+                    if (item instanceof FirstAidKit) {
+                        soundManager.playHealthPickup(); // Tocar som de coleta de cura
+                    } else if (item instanceof AmmoBox) {
+                        soundManager.playAmmoPickup(); // Tocar som de coleta de munição
+                    }
                     itemIterator.remove(); // Remove the item from the list
                 }
             }

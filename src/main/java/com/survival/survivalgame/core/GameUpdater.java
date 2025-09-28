@@ -10,50 +10,64 @@ import javafx.scene.canvas.Canvas;
 import java.util.Iterator;
 import java.util.List;
 
-/**
- * Manages the main game logic, including updating game objects and checking for win/loss conditions.
- */
 public class GameUpdater {
-
     private final GameController gameController;
     private final Player player;
     private final World world;
     private final InputHandler inputHandler;
     private final CollisionManager collisionManager;
     private final List<Bullet> bullets;
-    private final Canvas gameCanvas;
+    private final SoundManager soundManager;
 
     private long lastUpdateTime;
     private long survivalTimer = 0;
-    // Win condition: survive for 60 seconds
     private static final long SURVIVE_TIME_SECONDS = 120;
 
-    // Firing properties
-    private final long fireRate = 150; // milliseconds between shots
+    private final long fireRate = 150;
     private long lastShotTime = 0;
+    private Direction lastDirection = new Direction(0, -1);
 
-    public GameUpdater(GameController gameController, Player player, World world, InputHandler inputHandler, CollisionManager collisionManager, List<Bullet> bullets, Canvas gameCanvas) {
+    public GameUpdater(GameController gameController, Player player, World world, InputHandler inputHandler,
+                       CollisionManager collisionManager, List<Bullet> bullets, SoundManager soundManager) {
         this.gameController = gameController;
         this.player = player;
         this.world = world;
         this.inputHandler = inputHandler;
         this.collisionManager = collisionManager;
         this.bullets = bullets;
-        this.gameCanvas = gameCanvas;
+        this.soundManager = soundManager;
         this.lastUpdateTime = System.currentTimeMillis();
+
+        // Iniciar música de fundo
+        soundManager.playBackgroundMusic();
     }
 
-    /**
-     * The main update loop.
-     */
     public void update() {
         long currentTime = System.currentTimeMillis();
         long elapsedTime = currentTime - lastUpdateTime;
         lastUpdateTime = currentTime;
         survivalTimer += elapsedTime;
 
-        // Player update
-        player.update(inputHandler.getDirection(), world);
+        // Atualizar o estado do jogador
+        inputHandler.updateState();
+
+        // Controlar som de passos com base no estado
+        PlayerState state = inputHandler.getCurrentState();
+        if (state == PlayerState.MOVING || state == PlayerState.MOVING_SHOOTING) {
+            soundManager.playFootsteps();
+        } else {
+            soundManager.stopFootsteps();
+        }
+
+        // Player update with debug output
+        Direction direction = inputHandler.getDirection();
+        player.update(direction, world);
+        System.out.println("Player Position: (" + player.getX() + ", " + player.getY() + ")");
+
+        // Update last direction if moving
+        if (direction != null && (direction.getDx() != 0 || direction.getDy() != 0)) {
+            lastDirection = direction;
+        }
 
         // Enemy update
         world.getActiveAreas().forEach(area -> area.getEnemies().forEach(enemy -> enemy.update(player)));
@@ -63,37 +77,19 @@ public class GameUpdater {
         while (bulletIterator.hasNext()) {
             Bullet bullet = bulletIterator.next();
             bullet.update();
-            // Remove bullets that go off-screen
             if (bullet.getX() < 0 || bullet.getX() > world.getGridWidth() * world.getAreaWidth() ||
                     bullet.getY() < 0 || bullet.getY() > world.getGridHeight() * world.getAreaHeight()) {
                 bulletIterator.remove();
             }
         }
 
-        // Firing a bullet on mouse click
+        // Firing a bullet in the direction the player is moving or last moved
         if (inputHandler.isFiring() && player.getAmmo() > 0 && currentTime - lastShotTime > fireRate) {
-            // Get player's position on the canvas
-            double playerCanvasX = gameCanvas.getWidth() / 2;
-            double playerCanvasY = gameCanvas.getHeight() / 2;
-
-            // Get mouse position relative to the world
-            double mouseWorldX = player.getX() + (inputHandler.getMouseX() - playerCanvasX);
-            double mouseWorldY = player.getY() + (inputHandler.getMouseY() - playerCanvasY);
-
-            // Calculate direction vector
-            double dx = mouseWorldX - player.getX();
-            double dy = mouseWorldY - player.getY();
-            double length = Math.sqrt(dx * dx + dy * dy);
-
-            if (length > 0) {
-                Direction shootDirection = new Direction(dx / length, dy / length);
-                Bullet newBullet = new Bullet(player.getX(), player.getY(), shootDirection, 10, 10);
-                bullets.add(newBullet);
-
-                // Decrement player's ammo and update last shot time
-                player.setAmmo(player.getAmmo() - 1);
-                lastShotTime = currentTime;
-            }
+            Bullet newBullet = new Bullet(player.getX(), player.getY(), lastDirection, 10, 10);
+            bullets.add(newBullet);
+            player.setAmmo(player.getAmmo() - 1);
+            lastShotTime = currentTime;
+            soundManager.playGunshot(); // Tocar som de tiro
         }
 
         // Collision check
@@ -101,16 +97,21 @@ public class GameUpdater {
 
         // Game state checks
         if (!player.isAlive() || survivalTimer >= SURVIVE_TIME_SECONDS * 1000) {
+            soundManager.playDefeatTheme(); // Tocar tema de derrota
             gameController.endGame(GameController.GameState.DERROTA);
         }
 
-        // Winning condition: defeat all enemies OR survive for the required time
         if (gameController.getTotalEnemies() <= 0) {
+            soundManager.playVictoryTheme(); // Tocar tema de vitória
             gameController.endGame(GameController.GameState.VITORIA);
         }
     }
 
     public long getSurvivalTimer() {
         return survivalTimer;
+    }
+
+    public Direction getLastDirection() {
+        return lastDirection;
     }
 }
