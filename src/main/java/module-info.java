@@ -3,7 +3,7 @@ module com.survival.survivalgame {
     requires javafx.fxml;
     requires java.desktop;
     requires javafx.media;
-
+    requires org.json;
 
     opens com.survival.survivalgame to javafx.fxml;
     exports com.survival.survivalgame.controllers to javafx.fxml;

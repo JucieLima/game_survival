@@ -1,17 +1,14 @@
 package com.survival.survivalgame.core;
 
+import com.survival.survivalgame.controllers.GameController;
 import com.survival.survivalgame.models.Direction;
 import javafx.scene.Scene;
+import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.input.MouseEvent;
 
-/**
- * Handles all keyboard and mouse input for the game.
- * It tracks which movement keys are currently pressed and provides a normalized
- * direction vector to the game logic, as well as handling mouse clicks for firing.
- */
 public class InputHandler {
-
+    private final GameController gameController; // Adicionado para verificar o estado do jogo
     private boolean upPressed;
     private boolean downPressed;
     private boolean leftPressed;
@@ -21,18 +18,17 @@ public class InputHandler {
     private double mouseY;
     private PlayerState currentState;
     private boolean isMoving;
-
     private long lastFiringTime = 0;
     private static final long FIRING_DURATION = 200_000_000; // 200ms
+    private Runnable startGameCallback;
+    private Runnable restartGameCallback;
 
-    public InputHandler() {
+    public InputHandler(GameController gameController) {
+        this.gameController = gameController;
         this.currentState = PlayerState.IDLE;
         this.isMoving = false;
     }
 
-    /**
-     * Updates the player state based on movement and firing inputs.
-     */
     public void updateState() {
         boolean isCurrentlyFiring = isFiring || (System.nanoTime() - lastFiringTime < FIRING_DURATION);
         if (isMoving && isCurrentlyFiring) {
@@ -50,22 +46,15 @@ public class InputHandler {
         return currentState;
     }
 
-    /**
-     * Sets up event handlers on the game scene to listen for key presses, releases, and mouse clicks.
-     * @param scene The game scene to attach the handlers to.
-     */
-    public void setupInputHandlers(Scene scene) {
+    public void setupInputHandlers(Scene scene, Runnable startGameCallback, Runnable restartGameCallback) {
+        this.startGameCallback = startGameCallback;
+        this.restartGameCallback = restartGameCallback;
         scene.setOnKeyPressed(this::handleKeyPress);
         scene.setOnKeyReleased(this::handleKeyRelease);
         scene.setOnMousePressed(this::handleMousePress);
         scene.setOnMouseReleased(this::handleMouseRelease);
-        // Removido handleMouseMove, pois a direção do tiro agora vem de lastDirection
     }
 
-    /**
-     * Handles key press events, setting the corresponding movement flag to true.
-     * @param event The key event.
-     */
     private void handleKeyPress(KeyEvent event) {
         switch (event.getCode()) {
             case W:
@@ -80,15 +69,18 @@ public class InputHandler {
             case D:
                 rightPressed = true;
                 break;
+            case SPACE:
+                if (gameController.getGameState() == GameController.GameState.AGUARDANDO && startGameCallback != null) {
+                    startGameCallback.run();
+                } else if (gameController.getGameState() == GameController.GameState.DERROTA && restartGameCallback != null) {
+                    restartGameCallback.run();
+                }
+                break;
             default:
                 break;
         }
     }
 
-    /**
-     * Handles key release events, setting the corresponding movement flag to false.
-     * @param event The key event.
-     */
     private void handleKeyRelease(KeyEvent event) {
         switch (event.getCode()) {
             case W:
@@ -108,28 +100,15 @@ public class InputHandler {
         }
     }
 
-    /**
-     * Handles mouse press events, setting the firing flag to true.
-     * @param event The mouse event.
-     */
     private void handleMousePress(MouseEvent event) {
         this.isFiring = true;
         this.lastFiringTime = System.nanoTime();
     }
 
-    /**
-     * Handles mouse release events, setting the firing flag to false.
-     * @param event The mouse event.
-     */
     private void handleMouseRelease(MouseEvent event) {
         this.isFiring = false;
     }
 
-    /**
-     * Calculates and returns a normalized direction vector based on the currently pressed keys.
-     * Updates isMoving based on whether any movement keys are pressed.
-     * @return A Direction object representing the player's intended movement.
-     */
     public Direction getDirection() {
         double dx = 0;
         double dy = 0;
@@ -147,10 +126,8 @@ public class InputHandler {
             dx += 1;
         }
 
-        // Atualizar isMoving
         isMoving = (dx != 0 || dy != 0);
 
-        // Normalize the vector to ensure consistent speed in all directions
         if (isMoving) {
             double length = Math.sqrt(dx * dx + dy * dy);
             dx /= length;
@@ -160,7 +137,6 @@ public class InputHandler {
         return new Direction(dx, dy);
     }
 
-    // Getters for firing state
     public boolean isFiring() {
         return isFiring;
     }

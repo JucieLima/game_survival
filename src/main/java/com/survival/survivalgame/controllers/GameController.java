@@ -1,28 +1,24 @@
 package com.survival.survivalgame.controllers;
 
 import com.survival.survivalgame.core.*;
-import com.survival.survivalgame.models.AmmoBox;
-import com.survival.survivalgame.models.Area;
-import com.survival.survivalgame.models.Enemy;
-import com.survival.survivalgame.models.FirstAidKit;
-import com.survival.survivalgame.models.FollowPlayerBehavior;
-import com.survival.survivalgame.models.PatrolBehavior;
-import com.survival.survivalgame.models.Player;
-import com.survival.survivalgame.models.Behavior;
-import com.survival.survivalgame.models.SwitchingBehavior;
-import com.survival.survivalgame.models.World;
+import com.survival.survivalgame.models.*;
 import javafx.animation.AnimationTimer;
 import javafx.fxml.FXML;
 import javafx.fxml.Initializable;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.layout.StackPane;
+import org.json.JSONArray;
+import org.json.JSONObject;
+
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.ResourceBundle;
 import java.util.Random;
-import com.survival.survivalgame.models.Bullet;
+import java.util.ResourceBundle;
 
 public class GameController implements Initializable {
 
@@ -41,10 +37,11 @@ public class GameController implements Initializable {
     private List<Bullet> bullets;
     private final Random random = new Random();
     private int totalEnemies;
+    private int phaseLevel;
+    private List<JSONObject> phaseConfigs;
 
-    // Game state management
     public enum GameState {
-        JOGANDO, VITORIA, DERROTA
+        AGUARDANDO, JOGANDO, VITORIA, DERROTA
     }
 
     private GameState gameState;
@@ -56,31 +53,96 @@ public class GameController implements Initializable {
         gameCanvas.heightProperty().bind(((StackPane) gameCanvas.getParent()).heightProperty());
         gameCanvas.setFocusTraversable(true);
 
+        // Carregar configurações de fases
+        loadPhaseConfigs();
+
         // Initialize game objects
         this.player = new Player(450, 300, 100, 50);
         this.world = new World(player);
         player.setWorld(world);
         this.bullets = new ArrayList<>();
-
-        // Spawns enemies and items randomly
-        this.totalEnemies = spawnObjectsRandomly();
+        this.phaseLevel = 1;
+        this.gameState = GameState.AGUARDANDO;
+        this.totalEnemies = 0;
 
         // Initialize core game systems
-        SoundManager soundManager  = new SoundManager();
-        this.gameState = GameState.JOGANDO;
-        this.inputHandler = new InputHandler();
+        SoundManager soundManager = new SoundManager();
+        this.inputHandler = new InputHandler(this);
         this.collisionManager = new CollisionManager(player, world, bullets, this, soundManager);
-        this.gameUpdater = new GameUpdater(this, player, world, inputHandler, collisionManager, bullets, soundManager);
+        this.gameUpdater = new GameUpdater(this, player, world, inputHandler, collisionManager, bullets, soundManager, this::nextPhase);
         this.gameRenderer = new GameRenderer(this, gameUpdater, gc, world, player, gameCanvas, bullets, inputHandler);
 
-        // Set up input handler after the canvas has been added to a Scene
+        // Set up input handler
         gameCanvas.sceneProperty().addListener((obs, oldScene, newScene) -> {
             if (newScene != null) {
-                inputHandler.setupInputHandlers(newScene);
+                inputHandler.setupInputHandlers(newScene, this::startGame, this::restartGame);
             }
         });
 
+        // Iniciar o loop principal
         startGameLoop();
+    }
+
+    private void loadPhaseConfigs() {
+        String path = "/com/survival/survivalgame/phases.json";
+        try (InputStream is = getClass().getResourceAsStream(path)) {
+            if (is == null) {
+                System.err.println("Recurso não encontrado: " + path);
+                throw new RuntimeException("phases.json not found in classpath!");
+            }
+            System.out.println("Recurso encontrado: " + path);
+            String content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+            phaseConfigs = new ArrayList<>();
+            JSONArray jsonArray = new JSONArray(content);
+            for (int i = 0; i < jsonArray.length(); i++) {
+                phaseConfigs.add(jsonArray.getJSONObject(i));
+            }
+        } catch (IOException | RuntimeException e) {
+            System.err.println("Falha ao carregar phases.json: " + e.getMessage());
+            e.printStackTrace();
+            // Configuração padrão
+            phaseConfigs = new ArrayList<>();
+            JSONObject defaultPhase = new JSONObject()
+                    .put("phaseLevel", 1)
+                    .put("baseEnemies", 1)
+                    .put("maxEnemies", 3)
+                    .put("baseItems", 2)
+                    .put("minItems", 1)
+                    .put("enemyIncreaseFactor", 0.5)
+                    .put("itemDecreaseFactor", 0.3)
+                    .put("patrolSpeedBase", 1.0)
+                    .put("followSpeedBase", 1.5)
+                    .put("detectionRadiusBase", 200.0);
+            phaseConfigs.add(defaultPhase);
+        }
+    }
+
+
+    private void startGame() {
+        if (gameState != GameState.AGUARDANDO) return;
+        gameState = GameState.JOGANDO;
+        gameUpdater.resetSurvivalTimer(); // Reiniciar o temporizador
+        totalEnemies = spawnObjectsRandomly();
+    }
+
+    private void restartGame() {
+        if (gameState != GameState.DERROTA) return;
+
+        // Resetar para a primeira fase
+        phaseLevel = 1;
+        player.setX(450);
+        player.setY(300);
+        player.setHealth(100);
+        player.setAmmo(50);
+        totalEnemies = 0;
+        bullets.clear();
+        world.getActiveAreas().forEach(area -> {
+            area.getEnemies().clear();
+            area.getItems().clear();
+        });
+        gameUpdater.resetSurvivalTimer(); // Reiniciar o temporizador
+
+        gameState = GameState.AGUARDANDO;
     }
 
     private void startGameLoop() {
@@ -97,17 +159,27 @@ public class GameController implements Initializable {
     }
 
     private int spawnObjectsRandomly() {
+        totalEnemies = 0;
         double areaWidth = world.getAreaWidth();
         double areaHeight = world.getAreaHeight();
-        int enemyCount = 0;
+
+        // Obter configuração da fase atual
+        JSONObject phaseConfig = phaseConfigs.get(Math.min(phaseLevel - 1, phaseConfigs.size() - 1));
+        int baseEnemies = phaseConfig.getInt("baseEnemies");
+        int maxEnemies = phaseConfig.getInt("maxEnemies");
+        int baseItems = phaseConfig.getInt("baseItems");
+        int minItems = phaseConfig.getInt("minItems");
+        double patrolSpeedBase = phaseConfig.getDouble("patrolSpeedBase");
+        double followSpeedBase = phaseConfig.getDouble("followSpeedBase");
+        double detectionRadiusBase = phaseConfig.getDouble("detectionRadiusBase");
 
         for (int i = 0; i < world.getGridWidth(); i++) {
             for (int j = 0; j < world.getGridHeight(); j++) {
                 Area currentArea = world.getAreaAt(i * areaWidth, j * areaHeight);
 
                 // Spawn enemies
-                int numEnemies = random.nextInt(3) + 1; // 1 to 3 enemies per area
-                enemyCount += numEnemies;
+                int numEnemies = random.nextInt(maxEnemies - baseEnemies + 1) + baseEnemies;
+                totalEnemies += numEnemies;
                 for (int k = 0; k < numEnemies; k++) {
                     double enemyX = i * areaWidth + random.nextInt((int) areaWidth);
                     double enemyY = j * areaHeight + random.nextInt((int) areaHeight);
@@ -117,9 +189,9 @@ public class GameController implements Initializable {
                     double patrolX2 = i * areaWidth + random.nextInt((int) areaWidth);
                     double patrolY2 = j * areaHeight + random.nextInt((int) areaHeight);
 
-                    double patrolSpeed = 1.0 + random.nextDouble(); // 1.0 to 2.0
-                    double followSpeed = 1.5 + random.nextDouble(); // 1.5 to 2.5
-                    double detectionRadius = 200 + random.nextDouble() * 100; // 200 to 300
+                    double patrolSpeed = patrolSpeedBase + random.nextDouble();
+                    double followSpeed = followSpeedBase + random.nextDouble();
+                    double detectionRadius = detectionRadiusBase + random.nextDouble() * 100;
 
                     Behavior patrolBehavior = new PatrolBehavior(patrolSpeed, patrolX1, patrolY1, patrolX2, patrolY2);
                     Behavior followBehavior = new FollowPlayerBehavior(followSpeed);
@@ -129,7 +201,7 @@ public class GameController implements Initializable {
                 }
 
                 // Spawn items
-                int numItems = random.nextInt(2) + 1; // 1 to 2 items per area
+                int numItems = random.nextInt(baseItems - minItems + 1) + minItems;
                 for (int k = 0; k < numItems; k++) {
                     double itemX = i * areaWidth + random.nextInt((int) areaWidth);
                     double itemY = j * areaHeight + random.nextInt((int) areaHeight);
@@ -142,23 +214,37 @@ public class GameController implements Initializable {
                 }
             }
         }
-        return enemyCount;
+        return totalEnemies;
     }
 
-    /**
-     * Changes the game state and handles end-of-game logic.
-     * @param finalState The final state of the game (VITORIA or DERROTA).
-     */
+    private void nextPhase() {
+        phaseLevel++;
+        if (phaseLevel > phaseConfigs.size()) {
+            gameState = GameState.VITORIA;
+            return;
+        }
+
+        // Resetar estado do jogo
+        player.setX(450);
+        player.setY(300);
+        player.setHealth(100);
+        player.setAmmo(50);
+        totalEnemies = 0;
+        bullets.clear();
+        world.getActiveAreas().forEach(area -> {
+            area.getEnemies().clear();
+            area.getItems().clear();
+        });
+        gameUpdater.resetSurvivalTimer(); // Reiniciar o temporizador
+
+        gameState = GameState.AGUARDANDO;
+    }
+
     public void endGame(GameState finalState) {
         this.gameState = finalState;
         System.out.println("Fim de Jogo! Estado: " + finalState.name());
-        // No momento, apenas paramos de atualizar a lógica, mas a renderização continua para mostrar a tela final.
     }
 
-    /**
-     * Gets the current game state.
-     * @return The current GameState.
-     */
     public GameState getGameState() {
         return gameState;
     }
@@ -168,6 +254,16 @@ public class GameController implements Initializable {
     }
 
     public void decrementTotalEnemies() {
-        totalEnemies--;
+        if (totalEnemies > 0) {
+            totalEnemies--;
+            System.out.println("Inimigo eliminado! Total restante: " + totalEnemies);
+            if (totalEnemies <= 0 && gameState == GameState.JOGANDO) {
+                nextPhase();
+            }
+        }
+    }
+
+    public int getPhaseLevel() {
+        return phaseLevel;
     }
 }

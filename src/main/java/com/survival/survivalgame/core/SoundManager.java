@@ -2,6 +2,8 @@ package com.survival.survivalgame.core;
 
 import javafx.scene.media.Media;
 import javafx.scene.media.MediaPlayer;
+
+import java.net.URL;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -16,160 +18,166 @@ public class SoundManager {
     private final Media healthPickupSound;
     private boolean isFootstepsPlaying;
 
+    private static final double BACKGROUND_MUSIC_VOLUME = 0.2;
+    private static final double FOOTSTEPS_VOLUME = 1.0;
+    private static final double GUNSHOT_VOLUME = 0.7;
+    private static final double THEME_VOLUME = 0.5;
+    private static final double PICKUP_VOLUME = 0.6;
+
     public SoundManager() {
-        try {
-            // Carregar arquivos de áudio existentes
-            backgroundMusicPlayer = createMediaPlayer("/com/survival/survivalgame/sounds/background_music.mp3", true);
-            gunshotSound = createMedia("/com/survival/survivalgame/sounds/gunshot.wav");
-            footstepsPlayer = createMediaPlayer("/com/survival/survivalgame/sounds/footsteps.wav", true);
+        Media tempMedia;
+        MediaPlayer tempPlayer;
 
-            // Novos sons para vitória e derrota
-            victoryThemePlayer = createMediaPlayer("/com/survival/survivalgame/sounds/victory_theme.mp3", false); // Sem loop
-            defeatThemePlayer = createMediaPlayer("/com/survival/survivalgame/sounds/defeat_theme.mp3", false); // Sem loop
+        gunshotPlayers = new ArrayList<>();
+        isFootstepsPlaying = false;
 
-            // Novos sons para coleta de itens
-            ammoPickupSound = createMedia("/com/survival/survivalgame/sounds/ammo_pickup.wav");
-            healthPickupSound = createMedia("/com/survival/survivalgame/sounds/health_pickup.wav");
+        // Música de fundo
+        tempPlayer = tryCreateMediaPlayer("/com/survival/survivalgame/sounds/background_music.mp3", true, BACKGROUND_MUSIC_VOLUME);
+        backgroundMusicPlayer = tempPlayer;
 
-            // Inicializar pool de MediaPlayer para tiros
-            gunshotPlayers = new ArrayList<>();
+        // Tiros
+        tempMedia = tryCreateMedia("/com/survival/survivalgame/sounds/gunshot.wav");
+        gunshotSound = tempMedia;
+        if (gunshotSound != null) {
             for (int i = 0; i < 5; i++) {
                 MediaPlayer player = new MediaPlayer(gunshotSound);
-                player.setOnEndOfMedia(() -> player.stop());
+                player.setVolume(GUNSHOT_VOLUME);
+                player.setOnEndOfMedia(player::stop);
                 gunshotPlayers.add(player);
             }
-
-            isFootstepsPlaying = false;
-        } catch (Exception e) {
-            System.err.println("Failed to initialize SoundManager: " + e.getMessage());
-            throw new RuntimeException("SoundManager initialization failed", e);
         }
+
+        // Passos
+        tempPlayer = tryCreateMediaPlayer("/com/survival/survivalgame/sounds/footsteps.wav", true, FOOTSTEPS_VOLUME);
+        footstepsPlayer = tempPlayer;
+
+        // Temas vitória/derrota
+        tempPlayer = tryCreateMediaPlayer("/com/survival/survivalgame/sounds/victory_theme.mp3", false, THEME_VOLUME);
+        victoryThemePlayer = tempPlayer;
+
+        tempPlayer = tryCreateMediaPlayer("/com/survival/survivalgame/sounds/defeat_theme.mp3", false, THEME_VOLUME);
+        defeatThemePlayer = tempPlayer;
+
+        // Sons de coleta
+        ammoPickupSound = tryCreateMedia("/com/survival/survivalgame/sounds/ammo_pickup.wav");
+        healthPickupSound = tryCreateMedia("/com/survival/survivalgame/sounds/health_pickup.wav");
     }
 
-    private Media createMedia(String path) {
+    // --- Métodos auxiliares ---
+    private Media tryCreateMedia(String path) {
         try {
-            return new Media(getClass().getResource(path).toExternalForm());
+            // Tenta primeiro com getClass().getResource (caminho absoluto)
+            URL resource = getClass().getResource(path);
+            if (resource == null) {
+                System.err.println("Recurso não encontrado com getClass().getResource: " + path);
+                // Tenta com getClass().getClassLoader().getResource (caminho relativo)
+                String cleanPath = path.startsWith("/") ? path.substring(1) : path;
+                resource = getClass().getClassLoader().getResource(cleanPath);
+                if (resource == null) {
+                    System.err.println("Recurso não encontrado com getClass().getClassLoader().getResource: " + cleanPath);
+                    System.err.println("ClassLoader: " + getClass().getClassLoader());
+                    return null;
+                }
+            }
+            System.out.println("Recurso encontrado: " + resource.toExternalForm());
+            return new Media(resource.toExternalForm());
         } catch (Exception e) {
-            System.err.println("Failed to load audio from path: " + path);
-            throw new RuntimeException("Audio loading failed for: " + path, e);
+            System.err.println("Falha ao carregar áudio: " + path + " | " + e.getMessage());
+            e.printStackTrace();
+            return null;
         }
     }
 
-    private MediaPlayer createMediaPlayer(String path, boolean loop) {
-        Media media = createMedia(path);
+    private MediaPlayer tryCreateMediaPlayer(String path, boolean autoPlay, double volume) {
+        Media media = tryCreateMedia(path);
+        if (media == null) return null;
         MediaPlayer player = new MediaPlayer(media);
-        if (loop) {
-            player.setCycleCount(MediaPlayer.INDEFINITE);
-        }
+        player.setCycleCount(autoPlay ? MediaPlayer.INDEFINITE : 1);
+        player.setVolume(volume);
         return player;
     }
 
+    // --- Métodos de reprodução ---
     public void playBackgroundMusic() {
-        try {
+        if (backgroundMusicPlayer != null) {
+            stopAll();
             backgroundMusicPlayer.play();
-        } catch (Exception e) {
-            System.err.println("Failed to play background music: " + e.getMessage());
         }
     }
 
     public void stopBackgroundMusic() {
-        try {
-            backgroundMusicPlayer.stop();
-        } catch (Exception e) {
-            System.err.println("Failed to stop background music: " + e.getMessage());
-        }
+        if (backgroundMusicPlayer != null) backgroundMusicPlayer.stop();
     }
 
     public void playGunshot() {
-        try {
-            for (MediaPlayer player : gunshotPlayers) {
-                if (player.getStatus() != MediaPlayer.Status.PLAYING) {
-                    player.stop();
-                    player.play();
-                    return;
-                }
+        if (gunshotPlayers.isEmpty()) return;
+        for (MediaPlayer player : gunshotPlayers) {
+            if (player.getStatus() != MediaPlayer.Status.PLAYING) {
+                player.stop();
+                player.play();
+                return;
             }
-            MediaPlayer newPlayer = new MediaPlayer(gunshotSound);
-            newPlayer.setOnEndOfMedia(() -> newPlayer.stop());
-            newPlayer.play();
-            gunshotPlayers.add(newPlayer);
-        } catch (Exception e) {
-            System.err.println("Failed to play gunshot sound: " + e.getMessage());
         }
+        // Se todos ocupados, cria temporário
+        MediaPlayer newPlayer = new MediaPlayer(gunshotSound);
+        newPlayer.setVolume(GUNSHOT_VOLUME);
+        newPlayer.setOnEndOfMedia(newPlayer::stop);
+        newPlayer.play();
+        gunshotPlayers.add(newPlayer);
     }
 
     public void playFootsteps() {
-        try {
-            if (!isFootstepsPlaying) {
-                footstepsPlayer.play();
-                isFootstepsPlaying = true;
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to play footsteps sound: " + e.getMessage());
+        if (footstepsPlayer != null && !isFootstepsPlaying) {
+            footstepsPlayer.play();
+            isFootstepsPlaying = true;
         }
     }
 
     public void stopFootsteps() {
-        try {
-            if (isFootstepsPlaying) {
-                footstepsPlayer.stop();
-                isFootstepsPlaying = false;
-            }
-        } catch (Exception e) {
-            System.err.println("Failed to stop footsteps sound: " + e.getMessage());
+        if (footstepsPlayer != null && isFootstepsPlaying) {
+            footstepsPlayer.stop();
+            isFootstepsPlaying = false;
         }
     }
 
     public void playVictoryTheme() {
-        try {
-            stopAll(); // Para todos os outros sons antes de tocar o tema de vitória
+        if (victoryThemePlayer != null) {
+            stopAll();
             victoryThemePlayer.play();
-        } catch (Exception e) {
-            System.err.println("Failed to play victory theme: " + e.getMessage());
         }
     }
 
     public void playDefeatTheme() {
-        try {
-            stopAll(); // Para todos os outros sons antes de tocar o tema de derrota
+        if (defeatThemePlayer != null) {
+            stopAll();
             defeatThemePlayer.play();
-        } catch (Exception e) {
-            System.err.println("Failed to play defeat theme: " + e.getMessage());
         }
     }
 
     public void playAmmoPickup() {
-        try {
+        if (ammoPickupSound != null) {
             MediaPlayer player = new MediaPlayer(ammoPickupSound);
-            player.setOnEndOfMedia(() -> player.stop());
+            player.setVolume(PICKUP_VOLUME);
+            player.setOnEndOfMedia(player::stop);
             player.play();
-        } catch (Exception e) {
-            System.err.println("Failed to play ammo pickup sound: " + e.getMessage());
         }
     }
 
     public void playHealthPickup() {
-        try {
+        if (healthPickupSound != null) {
             MediaPlayer player = new MediaPlayer(healthPickupSound);
-            player.setOnEndOfMedia(() -> player.stop());
+            player.setVolume(PICKUP_VOLUME);
+            player.setOnEndOfMedia(player::stop);
             player.play();
-        } catch (Exception e) {
-            System.err.println("Failed to play health pickup sound: " + e.getMessage());
         }
     }
 
     public void stopAll() {
-        try {
-            backgroundMusicPlayer.stop();
-            for (MediaPlayer player : gunshotPlayers) {
-                player.stop();
-            }
-            footstepsPlayer.stop();
-            victoryThemePlayer.stop();
-            defeatThemePlayer.stop();
-            isFootstepsPlaying = false;
-        } catch (Exception e) {
-            System.err.println("Failed to stop all sounds: " + e.getMessage());
-        }
+        if (backgroundMusicPlayer != null) backgroundMusicPlayer.stop();
+        for (MediaPlayer player : gunshotPlayers) player.stop();
+        if (footstepsPlayer != null) footstepsPlayer.stop();
+        if (victoryThemePlayer != null) victoryThemePlayer.stop();
+        if (defeatThemePlayer != null) defeatThemePlayer.stop();
+        isFootstepsPlaying = false;
     }
 }

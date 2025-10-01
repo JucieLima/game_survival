@@ -5,8 +5,6 @@ import com.survival.survivalgame.models.Bullet;
 import com.survival.survivalgame.models.Direction;
 import com.survival.survivalgame.models.Player;
 import com.survival.survivalgame.models.World;
-import javafx.scene.canvas.Canvas;
-
 import java.util.Iterator;
 import java.util.List;
 
@@ -18,17 +16,18 @@ public class GameUpdater {
     private final CollisionManager collisionManager;
     private final List<Bullet> bullets;
     private final SoundManager soundManager;
+    private final Runnable nextPhaseCallback;
 
     private long lastUpdateTime;
-    private long survivalTimer = 0;
+    private long survivalTimer;
     private static final long SURVIVE_TIME_SECONDS = 120;
 
-    private final long fireRate = 150;
     private long lastShotTime = 0;
     private Direction lastDirection = new Direction(0, -1);
 
     public GameUpdater(GameController gameController, Player player, World world, InputHandler inputHandler,
-                       CollisionManager collisionManager, List<Bullet> bullets, SoundManager soundManager) {
+                       CollisionManager collisionManager, List<Bullet> bullets, SoundManager soundManager,
+                       Runnable nextPhaseCallback) {
         this.gameController = gameController;
         this.player = player;
         this.world = world;
@@ -36,22 +35,24 @@ public class GameUpdater {
         this.collisionManager = collisionManager;
         this.bullets = bullets;
         this.soundManager = soundManager;
+        this.nextPhaseCallback = nextPhaseCallback;
+        this.survivalTimer = 0;
         this.lastUpdateTime = System.currentTimeMillis();
 
-        // Iniciar música de fundo
         soundManager.playBackgroundMusic();
     }
 
     public void update() {
+        if (gameController.getGameState() != GameController.GameState.JOGANDO) return;
+
         long currentTime = System.currentTimeMillis();
         long elapsedTime = currentTime - lastUpdateTime;
+        if (elapsedTime >= 0) {
+            survivalTimer += elapsedTime;
+        }
         lastUpdateTime = currentTime;
-        survivalTimer += elapsedTime;
 
-        // Atualizar o estado do jogador
         inputHandler.updateState();
-
-        // Controlar som de passos com base no estado
         PlayerState state = inputHandler.getCurrentState();
         if (state == PlayerState.MOVING || state == PlayerState.MOVING_SHOOTING) {
             soundManager.playFootsteps();
@@ -59,20 +60,15 @@ public class GameUpdater {
             soundManager.stopFootsteps();
         }
 
-        // Player update with debug output
         Direction direction = inputHandler.getDirection();
         player.update(direction, world);
-        System.out.println("Player Position: (" + player.getX() + ", " + player.getY() + ")");
 
-        // Update last direction if moving
-        if (direction != null && (direction.getDx() != 0 || direction.getDy() != 0)) {
+        if (direction.getDx() != 0 || direction.getDy() != 0) {
             lastDirection = direction;
         }
 
-        // Enemy update
         world.getActiveAreas().forEach(area -> area.getEnemies().forEach(enemy -> enemy.update(player)));
 
-        // Bullet update
         Iterator<Bullet> bulletIterator = bullets.iterator();
         while (bulletIterator.hasNext()) {
             Bullet bullet = bulletIterator.next();
@@ -83,35 +79,36 @@ public class GameUpdater {
             }
         }
 
-        // Firing a bullet in the direction the player is moving or last moved
+        long fireRate = 150;
         if (inputHandler.isFiring() && player.getAmmo() > 0 && currentTime - lastShotTime > fireRate) {
             Bullet newBullet = new Bullet(player.getX(), player.getY(), lastDirection, 10, 10);
             bullets.add(newBullet);
             player.setAmmo(player.getAmmo() - 1);
             lastShotTime = currentTime;
-            soundManager.playGunshot(); // Tocar som de tiro
+            soundManager.playGunshot();
         }
 
-        // Collision check
         collisionManager.checkCollisions();
 
-        // Game state checks
         if (!player.isAlive() || survivalTimer >= SURVIVE_TIME_SECONDS * 1000) {
-            soundManager.playDefeatTheme(); // Tocar tema de derrota
+            soundManager.playDefeatTheme();
             gameController.endGame(GameController.GameState.DERROTA);
-        }
-
-        if (gameController.getTotalEnemies() <= 0) {
-            soundManager.playVictoryTheme(); // Tocar tema de vitória
-            gameController.endGame(GameController.GameState.VITORIA);
+        } else if (gameController.getTotalEnemies() <= 0) {
+            soundManager.playVictoryTheme();
+            nextPhaseCallback.run();
         }
     }
 
     public long getSurvivalTimer() {
-        return survivalTimer;
+        return Math.max(0, survivalTimer);
     }
 
     public Direction getLastDirection() {
         return lastDirection;
+    }
+
+    public void resetSurvivalTimer() {
+        survivalTimer = 0;
+        lastUpdateTime = System.currentTimeMillis();
     }
 }

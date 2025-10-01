@@ -4,7 +4,6 @@ import com.survival.survivalgame.controllers.GameController;
 import com.survival.survivalgame.models.Bullet;
 import com.survival.survivalgame.models.Player;
 import com.survival.survivalgame.models.World;
-import javafx.animation.AnimationTimer;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.paint.Color;
@@ -15,9 +14,6 @@ import javafx.scene.text.TextAlignment;
 import java.text.DecimalFormat;
 import java.util.List;
 
-/**
- * Coordinates the rendering operations, delegating to specialized renderers.
- */
 public class GameRenderer {
     private final GameController gameController;
     private final GameUpdater gameUpdater;
@@ -47,19 +43,29 @@ public class GameRenderer {
         this.worldRenderer = new WorldRenderer(gc, world);
         this.hudRenderer = new HUDRenderer(gc, player, gameUpdater, gameCanvas);
         this.minimapRenderer = new MinimapRenderer(gc, world, gameCanvas);
-
-        new AnimationTimer() {
-            @Override
-            public void handle(long now) {
-                render();
-            }
-        }.start();
     }
 
     public void render() {
         gc.setFill(Color.web("#333333"));
         gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
 
+        switch (gameController.getGameState()) {
+            case AGUARDANDO:
+                renderStartScreen();
+                break;
+            case JOGANDO:
+                renderGame();
+                break;
+            case VITORIA:
+                renderFinalVictoryScreen();
+                break;
+            case DERROTA:
+                renderEndGameScreen();
+                break;
+        }
+    }
+
+    private void renderGame() {
         gc.save();
         double cameraX = player.getX() - gameCanvas.getWidth() / 2;
         double cameraY = player.getY() - gameCanvas.getHeight() / 2;
@@ -75,13 +81,31 @@ public class GameRenderer {
 
         hudRenderer.render();
         minimapRenderer.render(player);
-
-        if (gameController.getGameState() != GameController.GameState.JOGANDO) {
-            drawEndGameScreen();
-        }
     }
 
-    private void drawEndGameScreen() {
+    private void renderStartScreen() {
+        gc.setFill(Color.BLACK);
+        gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
+        gc.setFill(Color.WHITE);
+        gc.setFont(Font.font("Arial", FontWeight.BOLD, 30));
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.fillText("Fase " + gameController.getPhaseLevel() + " - Pressione ESPAÇO para começar",
+                gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2);
+    }
+
+    private void renderFinalVictoryScreen() {
+        gc.setFill(Color.rgb(0, 0, 0, 0.7));
+        gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
+        gc.setFill(Color.web("#0CF25D"));
+        gc.setFont(Font.font("Arial", FontWeight.BOLD, 48));
+        gc.setTextAlign(TextAlignment.CENTER);
+        gc.fillText("Parabéns! Você venceu todas as fases!", gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2);
+        gc.setFont(Font.font("Arial", FontWeight.BOLD, 24));
+        long seconds = gameUpdater.getSurvivalTimer() / 1000;
+        gc.fillText("Tempo Total: " + Math.max(0, seconds) + " segundos", gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2 + 30);
+    }
+
+    private void renderEndGameScreen() {
         gc.setFill(Color.rgb(0, 0, 0, 0.7));
         gc.fillRect(0, 0, gameCanvas.getWidth(), gameCanvas.getHeight());
 
@@ -97,12 +121,15 @@ public class GameRenderer {
             gc.setFill(Color.web("#F29F05"));
             message = "DERROTA!";
         }
-        gc.fillText(message, gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2 - 50);
+        gc.fillText(message, gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2 - 80);
         gc.setFont(Font.font("Arial", FontWeight.BOLD, 24));
         long seconds = gameUpdater.getSurvivalTimer() / 1000;
         DecimalFormat df = new DecimalFormat("#.##");
+        gc.fillText("Tempo de Jogo: " + Math.max(0, seconds) + " segundos", gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2 - 30);
+        gc.fillText("Total de Inimigos: " + gameController.getTotalEnemies(), gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2);
 
-        gc.fillText("Tempo de Jogo: " + seconds + " segundos", gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2);
-        gc.fillText("Total de Inimigos: " + gameController.getTotalEnemies(), gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2 + 30);
+        if (gameController.getGameState() == GameController.GameState.DERROTA) {
+            gc.fillText("Digite ESPAÇO para recomeçar", gameCanvas.getWidth() / 2, gameCanvas.getHeight() / 2 + 30);
+        }
     }
 }

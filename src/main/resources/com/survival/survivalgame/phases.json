@@ -1,0 +1,26 @@
+[
+  {
+    "phaseLevel": 1,
+    "baseEnemies": 1,
+    "maxEnemies": 3,
+    "baseItems": 2,
+    "minItems": 1,
+    "enemyIncreaseFactor": 0.5,
+    "itemDecreaseFactor": 0.3,
+    "patrolSpeedBase": 1.0,
+    "followSpeedBase": 1.5,
+    "detectionRadiusBase": 200.0
+  },
+  {
+    "phaseLevel": 2,
+    "baseEnemies": 2,
+    "maxEnemies": 4,
+    "baseItems": 2,
+    "minItems": 1,
+    "enemyIncreaseFactor": 0.6,
+    "itemDecreaseFactor": 0.2,
+    "patrolSpeedBase": 1.2,
+    "followSpeedBase": 1.7,
+    "detectionRadiusBase": 220.0
+  }
+]

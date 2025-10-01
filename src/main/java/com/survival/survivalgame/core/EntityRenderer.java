@@ -9,7 +9,6 @@ import java.util.List;
 
 public class EntityRenderer {
     private final GraphicsContext gc;
-    private final InputHandler inputHandler;
     private final GameUpdater gameUpdater;
     private final Image playerSpriteSheet;
     private final Image enemySpriteSheet;
@@ -34,7 +33,6 @@ public class EntityRenderer {
 
     public EntityRenderer(GraphicsContext gc, InputHandler inputHandler, GameUpdater gameUpdater) {
         this.gc = gc;
-        this.inputHandler = inputHandler;
         this.gameUpdater = gameUpdater;
         this.playerSpriteSheet = loadImage("/com/survival/survivalgame/images/player_spritesheet.png");
         this.enemySpriteSheet = loadImage("/com/survival/survivalgame/images/enemy_spritesheet.png");
@@ -58,12 +56,11 @@ public class EntityRenderer {
     }
 
     private Image loadImage(String path) {
-        Image image = new Image(getClass().getResourceAsStream(path));
-        if (image.isError()) {
-            System.err.println("Failed to load image from path: " + path);
-            throw new RuntimeException("Image loading failed for: " + path);
+        var resource = getClass().getResourceAsStream(path);
+        if (resource == null) {
+            throw new RuntimeException("Image not found: " + path);
         }
-        return image;
+        return new Image(resource);
     }
 
     public void renderPlayer(Player player, InputHandler inputHandler) {
@@ -71,35 +68,25 @@ public class EntityRenderer {
         PlayerState state = inputHandler.getCurrentState();
 
         // Mapear estados para frames da spritesheet
-        switch (state) {
-            case MOVING:
+        frameIndex = switch (state) {
+            case MOVING ->
                 // Quadros 1-4 para MOVING
-                switch (currentFrame) {
-                    case 0: frameIndex = 1; break;
-                    case 1: frameIndex = 2; break;
-                    case 2: frameIndex = 3; break;
-                    case 3: frameIndex = 2; break; // Repete o quadro 2 para suavidade
-                    default: frameIndex = 1; break;
-                }
-                break;
-            case MOVING_SHOOTING:
+                    switch (currentFrame) {
+                        case 1 -> 2;
+                        case 2 -> 3;
+                        case 3 -> 2; // Repete o quadro 2 para suavidade
+                        default -> 1;
+                    };
+            case MOVING_SHOOTING ->
                 // Quadros 6-7 para MOVING_SHOOTING
-                switch (currentFrame) {
-                    case 0: frameIndex = 6; break;
-                    case 1: frameIndex = 7; break;
-                    case 2: frameIndex = 6; break; // Repete para manter animação curta
-                    case 3: frameIndex = 7; break;
-                    default: frameIndex = 6; break;
-                }
-                break;
-            case IDLE_SHOOTING:
-                frameIndex = 5; // Quadro 5 para IDLE_SHOOTING (estático)
-                break;
-            case IDLE:
-            default:
-                frameIndex = 0; // Quadro 0 para IDLE (estático)
-                break;
-        }
+                    switch (currentFrame) {
+                        case 1, 3 -> 7;
+                        case 2 -> 6; // Repete para manter animação curta
+                        default -> 6;
+                    };
+            case IDLE_SHOOTING -> 5; // Quadro 5 para IDLE_SHOOTING (estático)
+            default -> 0; // Quadro 0 para IDLE (estático)
+        };
 
         // Calcular rotação baseada na última direção (alinhada com o tiro)
         double angle = lastAngle;
@@ -130,14 +117,12 @@ public class EntityRenderer {
     }
 
     public void renderEnemies(List<Area> activeAreas) {
-        int frameIndex;
-        switch (currentFrame) {
-            case 0: frameIndex = 0; break;
-            case 1: frameIndex = 1; break;
-            case 2: frameIndex = 2; break;
-            case 3: frameIndex = 3; break;
-            default: frameIndex = 0; break;
-        }
+        int frameIndex = switch (currentFrame) {
+            case 1 -> 1;
+            case 2 -> 2;
+            case 3 -> 3;
+            default -> 0;
+        };
 
         for (Area area : activeAreas) {
             for (Enemy enemy : area.getEnemies()) {

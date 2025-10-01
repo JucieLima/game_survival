@@ -10,7 +10,7 @@ import java.io.IOException;
 public class Game extends Application {
     @Override
     public void start(Stage stage) throws IOException {
-        FXMLLoader fxmlLoader = new FXMLLoader(Game.class.getResource("MainPanel.fxml"));
+        FXMLLoader fxmlLoader = new FXMLLoader(Game.class.getResource("/com/survival/survivalgame/MainPanel.fxml"));
         Scene scene = new Scene(fxmlLoader.load(), 900, 600);
         stage.setTitle("Survival Game!");
         stage.setScene(scene);
